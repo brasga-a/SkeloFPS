@@ -1,20 +1,171 @@
-// Skelo.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
-//
-
 #include <iostream>
+#include <Windows.h>
+#include <chrono>
+
+using namespace std;
+
+//Screen Size Settings
+int nScreenWidth = 120;
+int nScreenHeight = 40;
+
+//Player Position
+float fPlayerX = 8.0f;
+float fPlayerY = 8.0f;
+float fPlayerA = 0.0f;
+
+//Map size
+int nMapHeight = 16;
+int nMapWidth = 16;
+
+//FOV
+float fFOV = 3.14159 / 4.0;
+float fDepth = 16.0f;
 
 int main()
 {
-    std::cout << "Hello World!\n";
+
+    // Create Screen Buffer
+    wchar_t* screen = new wchar_t[nScreenWidth * nScreenHeight];
+    HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+    SetConsoleActiveScreenBuffer(hConsole);
+    DWORD dwBytesWritten = 0;
+    
+    wstring map;
+
+    map += L"################";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"#..............#";
+    map += L"################";
+
+    auto tp1 = chrono::system_clock::now();
+    auto tp2 = chrono::system_clock::now();
+
+
+    //Game Loop
+    while (1) {
+
+         tp2 = chrono::system_clock::now();
+        chrono::duration<float> elapsedTime = tp2 - tp1;
+        tp1 = tp2;
+        float fElapsedTime = elapsedTime.count();
+
+          //Controls
+          //Handle CCW Rotation
+          if(GetAsyncKeyState((unsigned short)'A') & 0x8000)
+          fPlayerA -= (0.8f) * fElapsedTime;
+
+          if(GetAsyncKeyState((unsigned short)'D') & 0x8000)
+            fPlayerA += (0.8f) * fElapsedTime;            
+
+          if (GetAsyncKeyState((unsigned short)'W') & 0x8000) 
+          {
+              fPlayerX += sinf(fPlayerA) * 5.0f * fElapsedTime;
+              fPlayerY += cosf(fPlayerA) * 5.0f * fElapsedTime;
+
+              if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#')
+              {
+                  fPlayerX -= sinf(fPlayerA) * 5.0f * fElapsedTime;
+                  fPlayerY -= cosf(fPlayerA) * 5.0f * fElapsedTime;
+              }
+
+          }
+
+          if (GetAsyncKeyState((unsigned short)'S') & 0x8000)
+          {
+              fPlayerX -= sinf(fPlayerA) * 5.0f * fElapsedTime;
+              fPlayerY -= cosf(fPlayerA) * 5.0f * fElapsedTime;
+
+              if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#')
+              {
+                  fPlayerX += sinf(fPlayerA) * 5.0f * fElapsedTime;
+                  fPlayerY += cosf(fPlayerA) * 5.0f * fElapsedTime;
+              }
+
+          }
+
+
+        for (int x = 0; x < nScreenWidth; x++) 
+        {
+            float fRayAngle = (fPlayerA - fFOV / 2.0f) + ((float)x / (float)nScreenWidth) * fFOV;
+
+            float fDistanceToWall = 0;
+            bool bHitWall = false;
+            bool bBoundary = false;
+
+            float fEyeX = sinf(fRayAngle); //Unit vector for ray in player space
+            float fEyeY = cosf(fRayAngle);
+
+            while (!bHitWall && fDistanceToWall < fDepth) 
+            {
+                fDistanceToWall += 0.1f;
+
+                int nTestX = (int)(fPlayerX + fEyeX * fDistanceToWall);
+                int nTestY = (int)(fPlayerY + fEyeY * fDistanceToWall);
+
+                if(nTestX < 0 || nTestX >= nMapWidth || nTestY < 0 || nTestY >= nMapHeight)
+                {
+                    bHitWall = true; //Just set distance to maximum depth
+                    fDistanceToWall = fDepth;
+                }
+                else
+                {
+                    //Ray is inbounds so test to see if the ray cell is a wall block
+                    if(map[nTestY * nMapWidth + nTestX] == '#')
+                    {
+                        bHitWall = true;
+                    }
+                }
+            }
+
+            //Calculate distance to ceiling and floor
+            int nCeiling = (float)(nScreenHeight / 2.0) - nScreenHeight / ((float)fDistanceToWall);
+            int nFloor = nScreenHeight - nCeiling;
+
+            short nShade = ' ';
+
+            if      (fDistanceToWall <= fDepth / 4.0f)      nShade = 0x2588;        // Very close
+            else if (fDistanceToWall <= fDepth / 3.0f)      nShade = 0x2593;
+            else if (fDistanceToWall <= fDepth / 2.0f)      nShade = 0x2592;
+            else if (fDistanceToWall <= fDepth)             nShade = 0x2591;        // Too far away
+            else                                            nShade = ' ';
+
+            for (int y = 0; y < nScreenHeight; y++)
+            {
+                // Each Row
+                if (y <= nCeiling)
+                    screen[y * nScreenWidth + x] = ' ';
+                else if (y > nCeiling && y <= nFloor)
+                    screen[y * nScreenWidth + x] = nShade;
+                else // Floor
+                {
+                    // Shade floor based on distance
+                    float b = 1.0f - (((float)y - nScreenHeight / 2.0f) / ((float)nScreenHeight / 2.0f));
+                    if (b < 0.25)		nShade = '#';
+                    else if (b < 0.5)	nShade = 'x';
+                    else if (b < 0.75)	nShade = '.';
+                    else if (b < 0.9)	nShade = '-';
+                    else				nShade = ' ';
+                    screen[y * nScreenWidth + x] = nShade;
+                }
+            }
+        }
+
+        screen[nScreenWidth * nScreenHeight - 1] = '\0';
+        WriteConsoleOutputCharacter(hConsole, screen, nScreenWidth * nScreenHeight, { 0,0 }, &dwBytesWritten);
+
+    }
+    
+    return 0;
 }
-
-// Executar programa: Ctrl + F5 ou Menu Depurar > Iniciar Sem Depuração
-// Depurar programa: F5 ou menu Depurar > Iniciar Depuração
-
-// Dicas para Começar: 
-//   1. Use a janela do Gerenciador de Soluções para adicionar/gerenciar arquivos
-//   2. Use a janela do Team Explorer para conectar-se ao controle do código-fonte
-//   3. Use a janela de Saída para ver mensagens de saída do build e outras mensagens
-//   4. Use a janela Lista de Erros para exibir erros
-//   5. Ir Para o Projeto > Adicionar Novo Item para criar novos arquivos de código, ou Projeto > Adicionar Item Existente para adicionar arquivos de código existentes ao projeto
-//   6. No futuro, para abrir este projeto novamente, vá para Arquivo > Abrir > Projeto e selecione o arquivo. sln
