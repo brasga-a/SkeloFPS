@@ -1,6 +1,10 @@
 #include <iostream>
 #include <Windows.h>
+#include <stdio.h>
 #include <chrono>
+#include <vector>
+#include <utility>
+#include <algorithm>
 
 using namespace std;
 
@@ -33,20 +37,20 @@ int main()
     wstring map;
 
     map += L"################";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
-    map += L"#..............#";
+    map += L"#....#.........#";
+    map += L"#....#.....#.#.#";
+    map += L"#...##.##.##...#";
+    map += L"#......##......#";
+    map += L"#......#..#....#";
+    map += L"#...##....###..#";
+    map += L"#...#......#...#";
+    map += L"###....##......#";
+    map += L"#......##......#";
+    map += L"###.#......#...#";
+    map += L"#...##....##...#";
+    map += L"##.....#...#...#";
+    map += L"#...##.###.#...#";
+    map += L"#....#.........#";
     map += L"################";
 
     auto tp1 = chrono::system_clock::now();
@@ -64,10 +68,10 @@ int main()
           //Controls
           //Handle CCW Rotation
           if(GetAsyncKeyState((unsigned short)'A') & 0x8000)
-          fPlayerA -= (0.8f) * fElapsedTime;
+          fPlayerA -= (2.0f) * fElapsedTime;
 
           if(GetAsyncKeyState((unsigned short)'D') & 0x8000)
-            fPlayerA += (0.8f) * fElapsedTime;            
+            fPlayerA += (2.0f) * fElapsedTime;            
 
           if (GetAsyncKeyState((unsigned short)'W') & 0x8000) 
           {
@@ -125,6 +129,26 @@ int main()
                     if(map[nTestY * nMapWidth + nTestX] == '#')
                     {
                         bHitWall = true;
+
+                        vector<pair<float, float>> p; //distance, dot
+
+                        for (int tx = 0; tx < 2; tx++)
+                            for (int ty = 0; ty < 2; ty++)
+                            {
+                                float vy = (float)nTestY + ty - fPlayerY;
+                                float vx = (float)nTestX + tx - fPlayerX;
+                                float d = sqrt(vx * vx + vy * vy);
+                                float dot = (fEyeX * vx / d) + (fEyeY * vy / d);
+                                p.push_back(make_pair(d, dot));
+                            }
+
+                        //Sort Pairs from closest to farthest
+                        sort(p.begin(), p.end(), [](const pair<float, float>& left, const pair<float, float>& right) {return left.first < right.first; });
+                        float fBound = 0.005;
+                        if (acos(p.at(0).second) < fBound) bBoundary = true;
+                        if (acos(p.at(1).second) < fBound) bBoundary = true;
+                        if (acos(p.at(2).second) < fBound) bBoundary = true;
+
                     }
                 }
             }
@@ -140,6 +164,8 @@ int main()
             else if (fDistanceToWall <= fDepth / 2.0f)      nShade = 0x2592;
             else if (fDistanceToWall <= fDepth)             nShade = 0x2591;        // Too far away
             else                                            nShade = ' ';
+
+            if (bBoundary) nShade = ' '; // Black it out;
 
             for (int y = 0; y < nScreenHeight; y++)
             {
@@ -161,6 +187,18 @@ int main()
                 }
             }
         }
+
+        //Display stats
+        swprintf_s(screen, 40, L"X=%3.2f, Y=%3.2f, A=%3.2f FPS=%3.2f ", fPlayerX, fPlayerY, fPlayerA, 1.0f / fElapsedTime);
+
+        //Display Map
+        for (int nx = 0; nx < nMapWidth; nx++)
+            for (int ny = 0; ny < nMapWidth; ny++)
+            {
+                screen[(ny + 1) * nScreenWidth + nx] = map[ny * nMapWidth + nx];
+            }
+
+        screen[((int)fPlayerY + 1) * nScreenWidth + (int)fPlayerX] = 'P';
 
         screen[nScreenWidth * nScreenHeight - 1] = '\0';
         WriteConsoleOutputCharacter(hConsole, screen, nScreenWidth * nScreenHeight, { 0,0 }, &dwBytesWritten);
